@@ -81,9 +81,9 @@ For configuration details and alternative installation methods, please refer to 
 
 TeleCloud encrypts sensitive data at rest and ships with sane hardening defaults, but the operator still has to wire a few things up.
 
-**Required:**
+**Environment Settings (Optional):**
 
-*   **`TELECLOUD_MASTER_KEY`** — 32 random bytes (`openssl rand -hex 32`). Used to AES-256-GCM the Telegram session blob and sensitive settings (`api_id`, `api_hash`, `log_group_id`, `bot_tokens`). **Back this key up separately from the database.** Losing it means you have to re-authenticate Telegram and re-enter bot tokens. `auto-setup.sh` generates it into `.env`; copy it into a password manager.
+*   **`TELECLOUD_MASTER_KEY`** — 32 random bytes. If left blank, a secure 32-byte key is **automatically generated** and saved to a persistent `master.key` file in your database directory. Used to AES-256-GCM the Telegram session blob and sensitive settings (`api_id`, `api_hash`, `log_group_id`, `bot_tokens`). **Back up the `master.key` file or this variable separately from the database.** Losing it means you cannot decrypt your data. If you want, you can generate it with: `openssl rand -hex 32`.
 
 **Recommended:**
 

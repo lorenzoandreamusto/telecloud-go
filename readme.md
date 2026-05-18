@@ -81,9 +81,9 @@ Tải [**`auto-install.bat`**](https://raw.githubusercontent.com/dabeecao/telecl
 
 TeleCloud mã hóa dữ liệu nhạy cảm trong DB và chạy với các tiêu chuẩn hardening cơ bản, nhưng vẫn cần thao tác tay từ người vận hành.
 
-**Bắt buộc:**
+**Cấu hình Môi trường (Optional):**
 
-*   **`TELECLOUD_MASTER_KEY`** — 32 byte ngẫu nhiên (`openssl rand -hex 32`). Dùng để mã hóa Telegram session blob và các setting nhạy cảm (`api_id`, `api_hash`, `log_group_id`, `bot_tokens`) bằng AES-256-GCM. **Sao lưu key này tách biệt với DB**. Mất key = không thể giải mã, phải re-auth Telegram và nhập lại bot token. Script `auto-setup.sh` tự sinh và ghi vào `.env`; bạn cần copy ra password manager.
+*   **`TELECLOUD_MASTER_KEY`** — 32 byte ngẫu nhiên. Nếu để trống, hệ thống sẽ **tự động sinh ra** và lưu trữ vào tệp `master.key` nằm trong thư mục chứa Database. Dùng để mã hóa Telegram session blob và các setting nhạy cảm (`api_id`, `api_hash`, `log_group_id`, `bot_tokens`) bằng AES-256-GCM. **Hãy sao lưu tệp `master.key` hoặc biến này tách biệt với DB**. Mất key = không thể giải mã dữ liệu cũ. Nếu muốn, bạn có thể tự sinh bằng lệnh: `openssl rand -hex 32`.
 
 **Khuyến nghị:**
 

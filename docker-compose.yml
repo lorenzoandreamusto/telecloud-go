@@ -26,12 +26,11 @@ services:
       - FFMPEG_PATH=/usr/bin/ffmpeg
       - YTDLP_PATH=/usr/local/bin/yt-dlp
       - TORRENT_PATH=/usr/bin/aria2c
-      # REQUIRED: 32-byte master key (generate with `openssl rand -hex 32`).
-      # Put it in .env so it isn't committed.  Losing this key = losing access
-      # to encrypted Telegram sessions and stored secrets.
+      # Optional: 32-byte master key. If left blank, a secure 32-byte key is automatically
+      # generated and saved to /app/data/master.key inside the persistent volume.
+      # Put it in .env or uncomment here. Losing it means losing access to encrypted secrets.
       # TELECLOUD_MASTER_KEY=
-      # Optional one-time token to gate /setup against scanners until the
-      # admin account is created. Generate with `openssl rand -hex 16`.
+      # Optional: One-time token to gate /setup against scanners until the admin account is created.
       # TELECLOUD_SETUP_TOKEN=
     volumes:
       # Persist database, thumbnails, temp files, and Telegram session
