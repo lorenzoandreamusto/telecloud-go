@@ -148,8 +148,15 @@ func InitUploader(cfg *config.Config) {
 	}
 	uploadSemaphore = make(chan struct{}, uploadCount)
 
-	// Set concurrent download limit to 2 for a more comfortable experience
-	globalDownloadSemaphore = make(chan struct{}, 2)
+	// Scale concurrent download slots with bot count: 2 for 1 bot, up to 4 for 5+ bots.
+	// Each slot uses a separate bot session, so more bots = more parallel capacity.
+	downloadCount := 2
+	if botCount := GetBotCount(); botCount >= 5 {
+		downloadCount = 4
+	} else if botCount >= 3 {
+		downloadCount = 3
+	}
+	globalDownloadSemaphore = make(chan struct{}, downloadCount)
 }
 
 type UploadStatus struct {

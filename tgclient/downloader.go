@@ -59,7 +59,7 @@ type tgFileReader struct {
 	// Prefetch buffer
 	prefetchChunks map[int64][]byte // offset → prefetched chunk data
 	prefetchMu     sync.Mutex
-	prefetchSem    chan struct{} // capacity 1: ensures only one prefetch goroutine at a time
+	prefetchSem    chan struct{} // capacity 2: allows two concurrent prefetch goroutines using different bots
 }
 
 func (r *tgFileReader) Close() error {
@@ -74,7 +74,7 @@ func (r *tgFileReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	const chunkSize = int64(1024 * 1024)
+	const chunkSize = int64(2 * 1024 * 1024) // 2MB — max allowed by Telegram, halves network calls vs 1MB
 
 	// If we have no data or the current offset is outside our cached chunk, load it
 	if r.chunkData == nil || r.offset < r.chunkOffset || r.offset >= r.chunkOffset+int64(len(r.chunkData)) {
@@ -104,18 +104,18 @@ func (r *tgFileReader) Read(p []byte) (int, error) {
 	n := copy(p, r.chunkData[inChunkOffset:])
 	r.offset += int64(n)
 
-	// Trigger prefetch for the NEXT chunk when we reach the midpoint of current chunk.
-	// Uses a different bot than the sync fallback to spread rate-limit across sessions.
-	if inChunkOffset >= int64(len(r.chunkData))/2 {
+	// Trigger prefetch for the NEXT chunk when we've read 25% of the current chunk.
+	// Earlier trigger gives more time for the prefetch to complete before it's needed.
+	if inChunkOffset >= int64(len(r.chunkData))/4 {
 		r.triggerPrefetch(r.chunkOffset+chunkSize, chunkSize)
 	}
 
 	return n, nil
 }
 
-// triggerPrefetch launches a single background goroutine to fetch the next chunk
-// using a different bot than the synchronous fallback path. This spreads the
-// Telegram rate-limit across sessions without overwhelming a single DC.
+// triggerPrefetch launches a background goroutine to fetch the next chunk.
+// With prefetchSem capacity 2, up to two concurrent prefetches can run using
+// different bots, spreading Telegram rate-limit across sessions.
 func (r *tgFileReader) triggerPrefetch(offset int64, limit int64) {
 	if offset >= r.size {
 		return
@@ -129,7 +129,7 @@ func (r *tgFileReader) triggerPrefetch(offset int64, limit int64) {
 	}
 	r.prefetchMu.Unlock()
 
-	// Non-blocking: if a prefetch is already running, skip
+	// Non-blocking: if all prefetch slots are full, skip
 	select {
 	case r.prefetchSem <- struct{}{}:
 	default:
@@ -139,7 +139,8 @@ func (r *tgFileReader) triggerPrefetch(offset int64, limit int64) {
 	go func() {
 		defer func() { <-r.prefetchSem }()
 
-		// Use a different bot than the one used for sync fallback
+		// GetAPI() round-robins across available bots, so parallel prefetches
+		// will naturally land on different bots when multiple are available.
 		fetchAPI := GetAPI()
 		data, err := r.fetchChunk(fetchAPI, offset, limit)
 		if err != nil {
@@ -173,13 +174,8 @@ func (r *tgFileReader) fetchChunk(api *tg.Client, offset int64, limit int64) ([]
 		errStr := err.Error()
 		if strings.Contains(errStr, "FLOOD_WAIT") || strings.Contains(errStr, "TIMEOUT") || strings.Contains(errStr, "RPC_CALL_FAIL") {
 			waitDuration := time.Duration(attempt+1) * 2 * time.Second
-			if strings.Contains(errStr, "FLOOD_WAIT_") {
-				parts := strings.Split(errStr, "FLOOD_WAIT_")
-				if len(parts) > 1 {
-					if secs, e := fmt.Sscanf(parts[1], "%d", new(int)); e == nil && secs > 0 {
-						waitDuration = time.Duration(secs) * time.Second
-					}
-				}
+			if waitSecs, ok := ParseFloodWait(err); ok {
+				waitDuration = time.Duration(waitSecs) * time.Second
 			}
 			select {
 			case <-time.After(waitDuration):
@@ -322,7 +318,7 @@ var getSinglePartReader = func(ctx context.Context, msgID int, size int64, cfg *
 			loc:            cached.loc,
 			size:           size,
 			prefetchChunks: make(map[int64][]byte),
-			prefetchSem:    make(chan struct{}, 1),
+		prefetchSem:    make(chan struct{}, 2),
 		}, nil
 	}
 
@@ -475,7 +471,7 @@ var getSinglePartReader = func(ctx context.Context, msgID int, size int64, cfg *
 		loc:            loc,
 		size:           size,
 		prefetchChunks: make(map[int64][]byte),
-		prefetchSem:    make(chan struct{}, 1),
+		prefetchSem:    make(chan struct{}, 2),
 	}
 
 	return reader, nil
